@@ -27,8 +27,6 @@ sub load_customfield_type {
                 my ( $key, $tmpl_key, $param ) = @_;
                 my $max_height = 0;
 
-                # my $max_width = 580;
-
                 my @asset_loop;
                 my @asset_ids = split ',', $param->{value};
                 foreach my $id (@asset_ids) {
@@ -46,9 +44,7 @@ sub load_customfield_type {
                         my @thumbnail =
                           $asset->thumbnail_url( Width => 60, Square => "1" );
                         $row->{thumbnail_url} = $thumbnail[0];
-                        $max_height = $thumbnail[2]
-                          if $thumbnail[2] > $max_height;
-
+                        $max_height = $thumbnail[2] if $thumbnail[2] > $max_height;
                         $param->{has_thumbnail} = 1;
                     }
 
@@ -59,8 +55,7 @@ sub load_customfield_type {
                 # $param->{height_ratio} = 0.1 + ($max_height / $max_width);
                 $param->{max_height} = $max_height;
                 $param->{listing_id} = $param->{field_id} . '-listing';
-                ( $param->{field_basename} ) =
-                  ( $param->{field_id} =~ /^customfield_(.*)$/ );
+                ( $param->{field_basename} ) = ( $param->{field_id} =~ /^customfield_(.*)$/ );
             },
             options_field => q{
                 <div class="textarea-wrapper">&#60;<__trans phrase="Site Root">&#62; / <input type="text" name="options" value="<mt:var name="options" escape="html">" id="options" class="half-width" /></div>
