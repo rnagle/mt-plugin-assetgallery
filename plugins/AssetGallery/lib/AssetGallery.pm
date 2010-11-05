@@ -132,8 +132,6 @@ sub CMSPostSave {
             next if !defined $asset;
             push @assets, $asset->id;
             $app->param( 'customfield_' . $parent, join( ',', @assets ) );
-
-#	    MT->log({ message => "app->param(".'customfield_'.$parent.") = " . $app->param('customfield_'.$parent) });
         }
     }
 
@@ -147,7 +145,6 @@ sub CMSPostSave {
         }
         $app->param( $f, join( ',', @assets ) );
 
-        #	MT->log({ message => "app->param($f) = " . $app->param($f) });
     }
     $obj->save if $multifields;
     return 1;
@@ -170,11 +167,6 @@ sub _upload_file {
 
     my $mimetype;
     $mimetype = $info->{'Content-Type'} if ($info);
-
-    # eval { $fh = $q->upload($field_name) };
-    #           if ($@ && $@ =~ /^Undefined subroutine/) {
-    #              $fh = $q->param($field_name);
-    #           }
 
     my $basename = $app->param($field_name);
     $basename =~ s!\\!/!g;    ## Change backslashes to forward slashes
@@ -220,16 +212,16 @@ s!(<\$?MT[^>]+?>)|(%[_-]?[A-Za-z])!$1 ? $1 : '<mt:FileTemplate format="'. $2 . '
         return $blog->error( $build->errstr() );
     }
 
-    #my $path = File::Spec->catdir( $root_path, $relative_path );
     my $path;
 
     my $digest = sha1_base64($fh);
+    my @timeData = localtime(time);
+    my $ts = join('', @timeData);
     $digest =~ s{[/+]}{}g;
     $digest =~ s{(.......)}{$1,}g;
     my @dirs = split( /,/, $digest );
-    $path = File::Spec->catdir( $root_path, $relative_path, @dirs );
-
-#    MT->log({ message => "digest: $digest, some path: $somepath, split: " . join(',',@dirs) });
+    push @dirs, $ts;
+    $path = File::Spec->catdir( $root_path, $relative_path, @dirs);
 
     unless ( $fmgr->exists($path) ) {
         $fmgr->mkpath($path)
