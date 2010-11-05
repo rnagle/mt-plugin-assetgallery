@@ -35,10 +35,7 @@ $(document).ready( function() {
     
 <mt:unless name="field_value">
     <!-- If there's' nothing in the gallery, just show file upload -->
-    <mtapp:setting id="gallery_upload_queue" class="gallery_upload_queue" label="<__trans phrase="Upload Queue">" show_label="1">
-		<div id="upload_queue_fake" class="fake_input"><span><mt:ignore>Empty markup allows for styled file input</mt:ignore></span></div>
-		<input type="file" id="<mt:var name="field_id">_multifile" name="<mt:var name="field_id">_multifile"  title="Add images to your slideshow" />
-	</mtapp:setting>
+    <input type="file" id="<mt:var name="field_id">_multifile" name="<mt:var name="field_id">_multifile" />
 <mt:else>
     <div id="<mt:var name="field_id">_listing" style="margin-top: 20px;">
         <mt:loop name="asset_loop">
@@ -72,8 +69,7 @@ $(document).ready( function() {
 <mt:if name="__last__">
              </ul>
         <mtapp:setting id="gallery_upload_queue" class="gallery_upload_queue" label="<__trans phrase="Upload Queue">" show_label="1">
-			<div id="upload_queue_fake" class="fake_input"><span><mt:ignore>Empty markup allows for styled file input</mt:ignore></span></div>
-			<input type="file" id="<mt:var name="field_id">_multifile" name="<mt:var name="field_id">_multifile"  title="Add images to your slideshow" />
+            <input type="file" id="<mt:var name="field_id">_multifile" name="<mt:var name="field_id">_multifile" />
         </mtapp:setting>
 </mt:if>      
         </mt:loop>
