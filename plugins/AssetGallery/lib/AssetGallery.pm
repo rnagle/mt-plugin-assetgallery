@@ -4,7 +4,6 @@ use strict;
 use MT::Util qw( encode_url );
 use File::Spec::Functions;
 use Digest::SHA1 qw( sha1_base64 );
-use Data::Dumper;
 
 sub init_app {
     my $plugin = shift;
@@ -124,16 +123,16 @@ sub CMSPostSave {
             $multifields->{ 'customfield_' . $parent } = 1;
             my @assets = split( ",", $app->param( 'customfield_' . $parent ) );
             unless ( $q->param($field) ) {
-                $app->{'query'}->delete($field);    # remove so others don't process it
+                $app->{'query'}->delete($field)
+                  ;    # remove so others don't process it
                 next;
             }
             my ( $asset, $bytes ) = _upload_file( $app, $obj, $field, $parent );
             $app->{'query'}->delete($field); # remove so others don't process it
-#            MT->log({ message => "Asset:" . Dumper($asset) });
-            unless (!defined $asset) {
-                push @assets, $asset->id;
-                $app->param( 'customfield_' . $parent, join( ',', @assets ) );
-            }
+            next if !defined $asset;
+            push @assets, $asset->id;
+            $app->param( 'customfield_' . $parent, join( ',', @assets ) );
+
 #	    MT->log({ message => "app->param(".'customfield_'.$parent.") = " . $app->param('customfield_'.$parent) });
         }
     }
@@ -230,7 +229,7 @@ s!(<\$?MT[^>]+?>)|(%[_-]?[A-Za-z])!$1 ? $1 : '<mt:FileTemplate format="'. $2 . '
     my @dirs = split( /,/, $digest );
     $path = File::Spec->catdir( $root_path, $relative_path, @dirs );
 
-#    MT->log({ message => "digest: $digest, path: $path, split: " . join(',',@dirs) });
+#    MT->log({ message => "digest: $digest, some path: $somepath, split: " . join(',',@dirs) });
 
     unless ( $fmgr->exists($path) ) {
         $fmgr->mkpath($path)
@@ -270,139 +269,134 @@ s!(<\$?MT[^>]+?>)|(%[_-]?[A-Za-z])!$1 ? $1 : '<mt:FileTemplate format="'. $2 . '
         Local => $local_file
     );
 
-    if (-e "$local_file") {
-        MT->log({ message => "local file: " . $local_file . "already exists"});
-        return undef;
-    } else {
-        return $app->error( MT::Image->errstr )
-          unless $write_file;
+    return $app->error( MT::Image->errstr )
+      unless $write_file;
 
-        ## File does not exist, or else we have confirmed that we can overwrite.
-        my $umask = oct $app->config('UploadUmask');
-        my $old   = umask($umask);
-        defined( my $bytes = $write_file->() )
-          or return $app->error(
-            $app->translate(
-                "Error writing upload to '[_1]': [_2]", $local_file,
-                $fmgr->errstr
+    ## File does not exist, or else we have confirmed that we can overwrite.
+    my $umask = oct $app->config('UploadUmask');
+    my $old   = umask($umask);
+    defined( my $bytes = $write_file->() )
+      or return $app->error(
+        $app->translate(
+            "Error writing upload to '[_1]': [_2]", $local_file,
+            $fmgr->errstr
+        )
+      );
+    umask($old);
+
+    ## Close up the filehandle.
+    close $fh;
+
+    ## We are going to use $relative_path as the filename and as the url passed
+    ## in to the templates. So, we want to replace all of the '\' characters
+    ## with '/' characters so that it won't look like backslashed characters.
+    ## Also, get rid of a slash at the front, if present.
+    $relative_path =~ s!\\!/!g;
+    $relative_path =~ s!^/!!;
+    $relative_url  =~ s!\\!/!g;
+    $relative_url  =~ s!^/!!;
+    my $url = $base_url;
+    $url .= '/' unless $url =~ m!/$!;
+    $url .= $relative_url;
+    my $asset_url = $asset_base_url . '/' . $relative_url;
+
+    require File::Basename;
+    my $local_basename = File::Basename::basename($local_file);
+    my $ext =
+      ( File::Basename::fileparse( $local_file, qr/[A-Za-z0-9]+$/ ) )[2];
+
+    my $asset_pkg = MT->model('asset')->handler_for_file($local_basename);
+    my $is_image =
+         defined($w)
+      && defined($h)
+      && $asset_pkg->isa('MT::Asset::Image');
+    my $asset;
+    if (
+        !(
+            $asset = $asset_pkg->load(
+                { file_path => $asset_file, blog_id => $blog_id }
             )
-          );
-        umask($old);
-
-        ## Close up the filehandle.
-        close $fh;
-
-        ## We are going to use $relative_path as the filename and as the url passed
-        ## in to the templates. So, we want to replace all of the '\' characters
-        ## with '/' characters so that it won't look like backslashed characters.
-        ## Also, get rid of a slash at the front, if present.
-        $relative_path =~ s!\\!/!g;
-        $relative_path =~ s!^/!!;
-        $relative_url  =~ s!\\!/!g;
-        $relative_url  =~ s!^/!!;
-        my $url = $base_url;
-        $url .= '/' unless $url =~ m!/$!;
-        $url .= $relative_url;
-        my $asset_url = $asset_base_url . '/' . $relative_url;
-
-        require File::Basename;
-        my $local_basename = File::Basename::basename($local_file);
-        my $ext =
-          ( File::Basename::fileparse( $local_file, qr/[A-Za-z0-9]+$/ ) )[2];
-
-        my $asset_pkg = MT->model('asset')->handler_for_file($local_basename);
-        my $is_image =
-             defined($w)
-          && defined($h)
-          && $asset_pkg->isa('MT::Asset::Image');
-        my $asset;
-        if (
-            !(
-                $asset = $asset_pkg->load(
-                    { file_path => $asset_file, blog_id => $blog_id }
-                )
-            )
-          )
-        {
-            $asset = $asset_pkg->new();
-            $asset->file_path($asset_file);
-            $asset->file_name($local_basename);
-            $asset->file_ext($ext);
-            $asset->blog_id($blog_id);
-            $asset->created_by( $app->user->id );
-        }
-        else {
-            $asset->modified_by( $app->user->id );
-        }
-
-        my $original = $asset->clone;
-        $asset->url($asset_url);
-        if ($is_image) {
-            $asset->image_width($w);
-            $asset->image_height($h);
-        }
-        $asset->mime_type($mimetype) if $mimetype;
-        $asset->save;
-        $app->run_callbacks( 'cms_post_save.asset', $app, $asset, $original );
-
-        if ($is_image) {
-            $app->run_callbacks(
-                'cms_upload_file.' . $asset->class,
-                File  => $local_file,
-                file  => $local_file,
-                Url   => $url,
-                url   => $url,
-                Size  => $bytes,
-                size  => $bytes,
-                Asset => $asset,
-                asset => $asset,
-                Type  => 'image',
-                type  => 'image',
-                Blog  => $blog,
-                blog  => $blog
-            );
-            $app->run_callbacks(
-                'cms_upload_image',
-                File       => $local_file,
-                file       => $local_file,
-                Url        => $url,
-                url        => $url,
-                Size       => $bytes,
-                size       => $bytes,
-                Asset      => $asset,
-                asset      => $asset,
-                Height     => $h,
-                height     => $h,
-                Width      => $w,
-                width      => $w,
-                Type       => 'image',
-                type       => 'image',
-                ImageType  => $id,
-                image_type => $id,
-                Blog       => $blog,
-                blog       => $blog
-            );
-        }
-        else {
-            $app->run_callbacks(
-                'cms_upload_file.' . $asset->class,
-                File  => $local_file,
-                file  => $local_file,
-                Url   => $url,
-                url   => $url,
-                Size  => $bytes,
-                size  => $bytes,
-                Asset => $asset,
-                asset => $asset,
-                Type  => 'file',
-                type  => 'file',
-                Blog  => $blog,
-                blog  => $blog
-            );
-        }
-
-        return ( $asset, $bytes );
+        )
+      )
+    {
+        $asset = $asset_pkg->new();
+        $asset->file_path($asset_file);
+        $asset->file_name($local_basename);
+        $asset->file_ext($ext);
+        $asset->blog_id($blog_id);
+        $asset->created_by( $app->user->id );
     }
+    else {
+        $asset->modified_by( $app->user->id );
+    }
+
+    my $original = $asset->clone;
+    $asset->url($asset_url);
+    if ($is_image) {
+        $asset->image_width($w);
+        $asset->image_height($h);
+    }
+    $asset->mime_type($mimetype) if $mimetype;
+    $asset->save;
+    $app->run_callbacks( 'cms_post_save.asset', $app, $asset, $original );
+
+    if ($is_image) {
+        $app->run_callbacks(
+            'cms_upload_file.' . $asset->class,
+            File  => $local_file,
+            file  => $local_file,
+            Url   => $url,
+            url   => $url,
+            Size  => $bytes,
+            size  => $bytes,
+            Asset => $asset,
+            asset => $asset,
+            Type  => 'image',
+            type  => 'image',
+            Blog  => $blog,
+            blog  => $blog
+        );
+        $app->run_callbacks(
+            'cms_upload_image',
+            File       => $local_file,
+            file       => $local_file,
+            Url        => $url,
+            url        => $url,
+            Size       => $bytes,
+            size       => $bytes,
+            Asset      => $asset,
+            asset      => $asset,
+            Height     => $h,
+            height     => $h,
+            Width      => $w,
+            width      => $w,
+            Type       => 'image',
+            type       => 'image',
+            ImageType  => $id,
+            image_type => $id,
+            Blog       => $blog,
+            blog       => $blog
+        );
+    }
+    else {
+        $app->run_callbacks(
+            'cms_upload_file.' . $asset->class,
+            File  => $local_file,
+            file  => $local_file,
+            Url   => $url,
+            url   => $url,
+            Size  => $bytes,
+            size  => $bytes,
+            Asset => $asset,
+            asset => $asset,
+            Type  => 'file',
+            type  => 'file',
+            Blog  => $blog,
+            blog  => $blog
+        );
+    }
+
+    return ( $asset, $bytes );
 }
 
 sub _hdlr_asset_count {
